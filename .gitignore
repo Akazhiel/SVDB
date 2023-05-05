@@ -7,3 +7,5 @@ dist/
 *.vcf
 *.vcf.gz
 *.db
+*.c
+*.so

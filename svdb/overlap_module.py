@@ -16,22 +16,7 @@ def precise_overlap(chrApos_query, chrBpos_query, chrApos_db, chrBpos_db, distan
 # event is in the DB, variation is the new variation I want to insert
 def isSameVariation(chrApos_query, chrBpos_query, chrApos_db, chrBpos_db, ratio, distance):
     if abs(chrApos_query - chrApos_db) <= distance and abs(chrBpos_query - chrBpos_db) <= distance:
-
-        region_start = min([chrApos_db, chrApos_query])
-        overlap_start = max([chrApos_db, chrApos_query])
-
-        region_end = max([chrBpos_db, chrBpos_query])
-        overlap_end = min([chrBpos_db, chrBpos_query])
-
-        try:
-            event_ratio = float(overlap_end - overlap_start + 1) / \
-                float(region_end - region_start + 1)
-        except Exception:
-            event_ratio = 0
-
-        if event_ratio >= ratio:
-            return event_ratio, True
-        return None, False
+        return 1, True
     else:
         return None, False
 

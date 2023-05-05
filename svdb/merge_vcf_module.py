@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 
 import gzip
+import multiprocessing as mp
 import sys
 
 from . import merge_vcf_module_cython, readVCF
@@ -130,6 +131,7 @@ def print_header(vcf_list, vcf_dictionary, args, command_line):
 
 def main(args):
     variants = {}
+    chr_list = ['{}'.format(x) for x in list(range(1, 23)) + ['X', 'Y', 'M']]
     # add all the variants into a dictionary
     i = 0
     vcf_list = args.vcf
@@ -182,7 +184,15 @@ def main(args):
                         i += 1
 
     samples, sample_order, sample_print_order, contigs = print_header(vcf_list, vcf_dictionary, args, sys.argv)
-    to_be_printed = merge_vcf_module_cython.merge(variants, samples, sample_order, sample_print_order, priority_order, args)
+    to_be_printed = dict()
+    pool = mp.Pool()
+    for chr in chr_list:
+        try:
+            to_be_printed.update(pool.apply_async(merge_vcf_module_cython.merge, args = (chr, variants[chr], samples, sample_order, sample_print_order, priority_order, args)).get())
+        except:
+            continue
+    pool.close()
+    # to_be_printed = merge_vcf_module_cython.merge(variants, samples, sample_order, sample_print_order, priority_order, args)
 
     # use the contig order as defined in the header, or use lexiographic order
     if contigs:

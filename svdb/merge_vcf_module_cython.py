@@ -205,7 +205,7 @@ def sort_format_field(line, samples, sample_order, sample_print_order, priority_
     return line
 
 
-def merge(variants, samples, sample_order, sample_print_order, priority_order, args):
+def merge(chromosome, variants, samples, sample_order, sample_print_order, priority_order, args):
     overlap_param = args.overlap
     bnd_distance = args.bnd_distance
     ins_distance=args.ins_distance
@@ -215,159 +215,158 @@ def merge(variants, samples, sample_order, sample_print_order, priority_order, a
 
     # search for similar variants
     to_be_printed = {}
-    for chrA in variants:
-        analysed_variants = set([])
-        for i in range(len(variants[chrA])):
-            if i in analysed_variants:
+    analysed_variants = set([])
+    for i in range(len(variants)):
+        if i in analysed_variants:
+            continue
+
+        merge = []
+        #keep track of all csq of merged variants
+        csq = []
+
+        #Keep track of all files in the cluster
+        files = {}
+        #keep track of the FILTER column of all merged files
+        filters_tag = {}
+        #keep track of SAMPLEs columns of all merged files
+        samples_tag = {}
+        #keep track of INFO column of all merged files
+        info_tag = {}
+        #quality
+        qual_tag = {}
+        #pos
+        pos_tag = {}
+        #chrom
+        chrom_tag ={}
+
+        if args.priority:
+            id=variants[i][-3]
+        else:
+            id=variants[i][-3].split(".vcf")[0].split("/")[-1]
+
+        vcf_line_A=variants[i][-1].strip().split("\t")
+        chrom_tag[id]=[ "{}|{}".format(vcf_line_A[2].replace(";","_").replace(":","_").replace("|","_"),vcf_line_A[0]) ]
+        pos_tag[id]=[ "{}|{}".format(vcf_line_A[2].replace(";","_").replace(":","_").replace("|","_"),vcf_line_A[1]) ]
+        qual_tag[id]=[ "{}|{}".format(vcf_line_A[2].replace(";","_").replace(":","_").replace("|","_"),vcf_line_A[5]) ]
+        filters_tag[id]=[ "{}|{}".format(vcf_line_A[2].replace(";","_").replace(":","_").replace("|","_"),vcf_line_A[6]) ]
+        samples_tag[id]=[collect_sample( vcf_line_A ,samples,sample_order,id)]
+        info_tag[id]=[collect_info(vcf_line_A)]
+
+        for j in range(i + 1, len(variants)):
+            vcf_line_B=variants[j][-1].strip().split("\t")
+
+            # if the pass_only option is chosen, only variants marked PASS will be merged
+            if pass_only:
+                filter_tag = vcf_line_A[6]
+                if filter_tag not in ['PASS', '.']:
+                    break
+
+            if skip_variant(variants[i][0],variants[j][0],variants[i][1],variants[j][1],vcf_line_A,vcf_line_B,pass_only,j,analysed_variants,no_var):
                 continue
 
-            merge = []
-            #keep track of all csq of merged variants
-            csq = []
+            # if no_intra is chosen, variants may only be merged if they belong to different input files
+            if no_intra and variants[i][-3] == variants[j][-3]:
+                continue
 
-            #Keep track of all files in the cluster
-            files = {}
-            #keep track of the FILTER column of all merged files
-            filters_tag = {}
-            #keep track of SAMPLEs columns of all merged files
-            samples_tag = {}
-            #keep track of INFO column of all merged files
-            info_tag = {}
-            #quality
-            qual_tag = {}
-            #pos
-            pos_tag = {}
-            #chrom
-            chrom_tag ={}
+            if "INS" in variants[i][1]:
+                overlap, match = overlap_module.variant_overlap(
+                    chromosome, variants[i][0], variants[i][2], variants[i][3], variants[j][2], variants[j][3], -1, ins_distance)
 
-            if args.priority:
-               id=variants[chrA][i][-3]
             else:
-               id=variants[chrA][i][-3].split(".vcf")[0].split("/")[-1]
+                overlap, match = overlap_module.variant_overlap(
+                    chromosome, variants[i][0], variants[i][2], variants[i][3], variants[j][2], variants[j][3], overlap_param, bnd_distance)
 
-            vcf_line_A=variants[chrA][i][-1].strip().split("\t")
-            chrom_tag[id]=[ "{}|{}".format(vcf_line_A[2].replace(";","_").replace(":","_").replace("|","_"),vcf_line_A[0]) ]
-            pos_tag[id]=[ "{}|{}".format(vcf_line_A[2].replace(";","_").replace(":","_").replace("|","_"),vcf_line_A[1]) ]
-            qual_tag[id]=[ "{}|{}".format(vcf_line_A[2].replace(";","_").replace(":","_").replace("|","_"),vcf_line_A[5]) ]
-            filters_tag[id]=[ "{}|{}".format(vcf_line_A[2].replace(";","_").replace(":","_").replace("|","_"),vcf_line_A[6]) ]
-            samples_tag[id]=[collect_sample( vcf_line_A ,samples,sample_order,id)]
-            info_tag[id]=[collect_info(vcf_line_A)]
-
-            for j in range(i + 1, len(variants[chrA])):
-                vcf_line_B=variants[chrA][j][-1].strip().split("\t")
-
-                # if the pass_only option is chosen, only variants marked PASS will be merged
-                if pass_only:
-                    filter_tag = vcf_line_A[6]
-                    if filter_tag not in ['PASS', '.']:
-                        break
-
-                if skip_variant(variants[chrA][i][0],variants[chrA][j][0],variants[chrA][i][1],variants[chrA][j][1],vcf_line_A,vcf_line_B,pass_only,j,analysed_variants,no_var):
-                    continue
-
-                # if no_intra is chosen, variants may only be merged if they belong to different input files
-                if no_intra and variants[chrA][i][-3] == variants[chrA][j][-3]:
-                    continue
-
-                if "INS" in variants[chrA][i][1]:
-                    overlap, match = overlap_module.variant_overlap(
-                        chrA, variants[chrA][i][0], variants[chrA][i][2], variants[chrA][i][3], variants[chrA][j][2], variants[chrA][j][3], -1, ins_distance)
-
+            if match:
+                # add similar variants to the merge list and remove them
+                if args.priority:
+                    match_id=variants[j][-3]
                 else:
-                    overlap, match = overlap_module.variant_overlap(
-                        chrA, variants[chrA][i][0], variants[chrA][i][2], variants[chrA][i][3], variants[chrA][j][2], variants[chrA][j][3], overlap_param, bnd_distance)
+                    match_id=variants[j][-3].split(".vcf")[0].split("/")[-1]
 
-                if match:
-                    # add similar variants to the merge list and remove them
-                    if args.priority:
-                        match_id=variants[chrA][j][-3]
-                    else:
-                        match_id=variants[chrA][j][-3].split(".vcf")[0].split("/")[-1]
+                files[match_id] = variants[j][-1]
+                merge.append(vcf_line_B[2].replace(";", "_") + ":" + match_id)
+                if not match_id in filters_tag:
+                    filters_tag[match_id]=[]
+                    samples_tag[match_id]=[]
+                    info_tag[match_id]=[]
+                    chrom_tag[match_id]=[]
+                    pos_tag[match_id]=[]
+                    qual_tag[match_id]=[]
 
-                    files[match_id] = variants[chrA][j][-1]
-                    merge.append(vcf_line_B[2].replace(";", "_") + ":" + match_id)
-                    if not match_id in filters_tag:
-                        filters_tag[match_id]=[]
-                        samples_tag[match_id]=[]
-                        info_tag[match_id]=[]
-                        chrom_tag[match_id]=[]
-                        pos_tag[match_id]=[]
-                        qual_tag[match_id]=[]
+                chrom_tag[match_id].append("{}|{}".format(vcf_line_B[2].replace(";","_").replace(":","_").replace("|","_"),variants[j][-1].split("\t")[0]) )
+                pos_tag[match_id].append("{}|{}".format(vcf_line_B[2].replace(";","_").replace(":","_").replace("|","_"),variants[j][-1].split("\t")[1]) )
+                qual_tag[match_id].append("{}|{}".format(vcf_line_B[2].replace(";","_").replace(":","_").replace("|","_"),variants[j][-1].split("\t")[5]) )
+                filters_tag[match_id].append("{}|{}".format(vcf_line_B[2].replace(";","_").replace(":","_").replace("|","_"),variants[j][-1].split("\t")[6]) )
 
-                    chrom_tag[match_id].append("{}|{}".format(vcf_line_B[2].replace(";","_").replace(":","_").replace("|","_"),variants[chrA][j][-1].split("\t")[0]) )
-                    pos_tag[match_id].append("{}|{}".format(vcf_line_B[2].replace(";","_").replace(":","_").replace("|","_"),variants[chrA][j][-1].split("\t")[1]) )
-                    qual_tag[match_id].append("{}|{}".format(vcf_line_B[2].replace(";","_").replace(":","_").replace("|","_"),variants[chrA][j][-1].split("\t")[5]) )
-                    filters_tag[match_id].append("{}|{}".format(vcf_line_B[2].replace(";","_").replace(":","_").replace("|","_"),variants[chrA][j][-1].split("\t")[6]) )
+                samples_tag[match_id].append(collect_sample(vcf_line_B ,samples,sample_order,match_id))
+                info_tag[match_id].append( collect_info(vcf_line_B) )
 
-                    samples_tag[match_id].append(collect_sample(vcf_line_B ,samples,sample_order,match_id))
-                    info_tag[match_id].append( collect_info(vcf_line_B) )
+                if variants[i][0] != chromosome and "CSQ=" in variants[j][-1]:
+                    info = vcf_line_B[7]
+                    csq.append(info.split("CSQ=")[-1].split(";")[0])
+                analysed_variants.add(j)
 
-                    if variants[chrA][i][0] != chrA and "CSQ=" in variants[chrA][j][-1]:
-                        info = vcf_line_B[7]
-                        csq.append(info.split("CSQ=")[-1].split(";")[0])
-                    analysed_variants.add(j)
+        line = vcf_line_A
 
-            line = vcf_line_A
+        if csq:
+            line[7] = merge_csq(line[7], csq)
+        if not line[0] in to_be_printed:
+            to_be_printed[line[0]] = []
 
-            if csq:
-                line[7] = merge_csq(line[7], csq)
-            if not line[0] in to_be_printed:
-                to_be_printed[line[0]] = []
+        if args.priority:
+            files[variants[i][-3]] = "\t".join(line)
+            representing_file = variants[i][-3]
+        else:
+            files[variants[i]
+                    [-3].split(".vcf")[0].split("/")[-1]] = "\t".join(line)
+            representing_file = variants[i][-3].split(".vcf")[
+                0].split("/")[-1]
+        line = sort_format_field(
+            line, samples, sample_order, sample_print_order, priority_order, files, representing_file, args)
+        if merge and not args.notag:
+            line[7] += ";VARID=" + "|".join(merge)
+            line[2] += ":{}|".format(variants[i][-3].split(".vcf")
+                                        [0].split("/")[-1]) + "|".join(merge)
+        if not args.notag:
+            set_tag = determine_set_tag(priority_order, files)
+            line[7] += ";set={}".format(set_tag)
+            line[7] += ";FOUNDBY={}".format( len(set(filters_tag.keys())) )
 
-            if args.priority:
-                files[variants[chrA][i][-3]] = "\t".join(line)
-                representing_file = variants[chrA][i][-3]
+        #add chrom information of all merged variants
+        callers=[]
+        for tag in filters_tag:
+            line[7]+=";{}_CHROM={}".format(tag,",".join(chrom_tag[tag]))
+            callers.append(tag)
+        #add pos information of all merged variants
+        for tag in filters_tag:
+            line[7]+=";{}_POS={}".format(tag,",".join(pos_tag[tag]))
+        #add qual information of all merged variants
+        for tag in filters_tag:
+            line[7]+=";{}_QUAL={}".format(tag,",".join(qual_tag[tag]))
+        #add filter of all merged variants
+        for tag in filters_tag:
+            line[7]+=";{}_FILTERS={}".format(tag,",".join(filters_tag[tag]).replace(";",","))
+        #add samples information for all merged variants
+        for tag in samples_tag:
+            line[7]+=";{}_SAMPLE={}".format(tag,",".join(samples_tag[tag]))
+        #add info column for all merged variants
+        for tag in samples_tag:
+            line[7]+=";{}_INFO={}".format(tag,",".join(info_tag[tag]))
+
+        if not args.notag:
+            line[7]+=";svdb_origin={}".format("|".join(callers))
+
+        sup_vec=[]
+        for c in sorted(priority_order):
+            if c in filters_tag:
+                sup_vec.append("1") 
             else:
-                files[variants[chrA][i]
-                      [-3].split(".vcf")[0].split("/")[-1]] = "\t".join(line)
-                representing_file = variants[chrA][i][-3].split(".vcf")[
-                    0].split("/")[-1]
-            line = sort_format_field(
-                line, samples, sample_order, sample_print_order, priority_order, files, representing_file, args)
-            if merge and not args.notag:
-                line[7] += ";VARID=" + "|".join(merge)
-                line[2] += ":{}|".format(variants[chrA][i][-3].split(".vcf")
-                                         [0].split("/")[-1]) + "|".join(merge)
-            if not args.notag:
-                set_tag = determine_set_tag(priority_order, files)
-                line[7] += ";set={}".format(set_tag)
-                line[7] += ";FOUNDBY={}".format( len(set(filters_tag.keys())) )
+                sup_vec.append("0") 
 
-            #add chrom information of all merged variants
-            callers=[]
-            for tag in filters_tag:
-                line[7]+=";{}_CHROM={}".format(tag,",".join(chrom_tag[tag]))
-                callers.append(tag)
-            #add pos information of all merged variants
-            for tag in filters_tag:
-                line[7]+=";{}_POS={}".format(tag,",".join(pos_tag[tag]))
-            #add qual information of all merged variants
-            for tag in filters_tag:
-                line[7]+=";{}_QUAL={}".format(tag,",".join(qual_tag[tag]))
-            #add filter of all merged variants
-            for tag in filters_tag:
-                line[7]+=";{}_FILTERS={}".format(tag,",".join(filters_tag[tag]).replace(";",","))
-            #add samples information for all merged variants
-            for tag in samples_tag:
-                line[7]+=";{}_SAMPLE={}".format(tag,",".join(samples_tag[tag]))
-            #add info column for all merged variants
-            for tag in samples_tag:
-                line[7]+=";{}_INFO={}".format(tag,",".join(info_tag[tag]))
+        line[7]+=";SUPP_VEC={}".format("".join(sup_vec))
 
-            if not args.notag:
-                line[7]+=";svdb_origin={}".format("|".join(callers))
+        to_be_printed[line[0]].append(line)
 
-            sup_vec=[]
-            for c in sorted(priority_order):
-                if c in filters_tag:
-                    sup_vec.append("1") 
-                else:
-                    sup_vec.append("0") 
-
-            line[7]+=";SUPP_VEC={}".format("".join(sup_vec))
-
-            to_be_printed[line[0]].append(line)
-
-            analysed_variants.add(i)
+        analysed_variants.add(i)
 
     return to_be_printed
